@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Anthropic from '@anthropic-ai/sdk'
 import './App.css'
 
@@ -62,6 +62,12 @@ const CATEGORIES = {
   }
 }
 
+// Storage keys
+const STORAGE_KEYS = {
+  DOCUMENTS: 'secondBrain_documents',
+  MESSAGES: 'secondBrain_messages'
+}
+
 function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -69,6 +75,53 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState('ALL')
+
+  // Load saved data when app starts
+  useEffect(() => {
+    loadSavedData()
+  }, [])
+
+  // Save documents whenever they change
+  useEffect(() => {
+    if (documents.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents))
+    }
+  }, [documents])
+
+  // Save messages whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages))
+    }
+  }, [messages])
+
+  // Load data from localStorage
+  const loadSavedData = () => {
+    try {
+      const savedDocuments = localStorage.getItem(STORAGE_KEYS.DOCUMENTS)
+      const savedMessages = localStorage.getItem(STORAGE_KEYS.MESSAGES)
+      
+      if (savedDocuments) {
+        setDocuments(JSON.parse(savedDocuments))
+      }
+      
+      if (savedMessages) {
+        setMessages(JSON.parse(savedMessages))
+      }
+    } catch (error) {
+      console.error('Error loading saved data:', error)
+    }
+  }
+
+  // Clear all data
+  const clearAllData = () => {
+    if (confirm('Are you sure you want to clear all documents and messages? This cannot be undone.')) {
+      localStorage.removeItem(STORAGE_KEYS.DOCUMENTS)
+      localStorage.removeItem(STORAGE_KEYS.MESSAGES)
+      setDocuments([])
+      setMessages([])
+    }
+  }
 
   // AI-powered categorization
   const categorizeDocument = async (filename, content) => {
@@ -148,8 +201,11 @@ Respond with just the category name (e.g., "CAREER" or "LEARNING").`
     for (const file of files) {
       if (file.type === 'text/plain' || file.name.endsWith('.md')) {
         try {
-          const processedDoc = await processFile(file)
-          setDocuments(prev => [...prev, processedDoc])
+          // Check if file already exists
+          if (!documents.find(doc => doc.filename === file.name)) {
+            const processedDoc = await processFile(file)
+            setDocuments(prev => [...prev, processedDoc])
+          }
         } catch (error) {
           console.error('Error processing file:', error)
         }
@@ -227,19 +283,21 @@ Based on this information and your general knowledge, please answer the user's q
       setMessages(prev => [...prev, 
         { 
           type: 'user', 
-          content: question 
+          content: question,
+          timestamp: new Date().toISOString()
         },
         { 
           type: 'ai', 
           content: aiResponse,
-          sourceDocs: relevantChunks.map(chunk => chunk.filename)
+          sourceDocs: relevantChunks.map(chunk => chunk.filename),
+          timestamp: new Date().toISOString()
         }
       ])
     } catch (error) {
       console.error('Error:', error)
       setMessages(prev => [...prev, 
-        { type: 'user', content: question },
-        { type: 'ai', content: 'Sorry, I encountered an error. Please try again.' }
+        { type: 'user', content: question, timestamp: new Date().toISOString() },
+        { type: 'ai', content: 'Sorry, I encountered an error. Please try again.', timestamp: new Date().toISOString() }
       ])
     }
     
@@ -267,6 +325,9 @@ Based on this information and your general knowledge, please answer the user's q
       }}>
         <h1>🧠 My Second Brain</h1>
         <p>Upload your knowledge, ask intelligent questions</p>
+        <div style={{ fontSize: '14px', opacity: 0.8, marginTop: '10px' }}>
+          📊 {documents.length} documents • 💬 {messages.length} messages • 💾 Auto-saved
+        </div>
       </header>
 
       <div className="main-container" style={{
@@ -284,7 +345,24 @@ Based on this information and your general knowledge, please answer the user's q
           borderRadius: '10px',
           boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
         }}>
-          <h3 style={{ color: '#333' }}>📁 Upload Documents</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ color: '#333', margin: 0 }}>📁 Upload Documents</h3>
+            <button
+              onClick={clearAllData}
+              style={{
+                padding: '5px 10px',
+                fontSize: '12px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Clear All
+            </button>
+          </div>
+          
           <div className="upload-area" style={{
             border: '2px dashed #ccc',
             padding: '20px',
